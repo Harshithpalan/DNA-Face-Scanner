@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>🧬 DNA Face Scanner</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&family=Inter:wght@300;400;500&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --void:    #020b12;
+  --deep:    #030f1a;
+  --panel:   #041520;
+  --border:  #0a2a3a;
+  --phos:    #00ff9d;
+  --teal:    #00c4d4;
+  --amber:   #ffb800;
+  --plasma:  #ff3860;
+  --data:    #e8f4f8;
+  --dim:     #3a6070;
+  --dimmer:  #1a3040;
+  --mono:    'Share Tech Mono', monospace;
+  --display: 'Rajdhani', sans-serif;
+  --body:    'Inter', sans-serif;
+}
+
+html,body{
+  height:100%; min-height:100vh;
+  background:var(--void);
+  color:var(--data);
+  font-family:var(--body);
+  overflow:hidden;
+}
+
+/* ══ LAYOUT ══ */
+#app{
+  display:grid;
+  grid-template-columns:42% 1fr;
+  grid-template-rows:44px 1fr;
+  height:100vh;
+  gap:0;
+}
+
+/* ══ TOPBAR ══ */
+#topbar{
+  grid-column:1/-1;
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;
+  padding:0 20px;gap:16px;
+  position:relative;overflow:hidden;
+}
+#topbar::after{
+  content:'';
+  position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--teal),var(--phos),var(--teal),transparent);
+  opacity:0.6;
+}
+.sys-id{
+  font-family:var(--display);font-size:19px;font-weight:700;
+  color:var(--phos);letter-spacing:0.08em;
+  text-shadow:0 0 20px rgba(0,255,157,0.4);
+}
+.sys-sub{
+  font-family:var(--mono);font-size:10px;color:var(--dim);
+  letter-spacing:0.14em;text-transform:uppercase;
+  border-left:1px solid var(--border);padding-left:14px;
+}
+.sys-time{
+  font-family:var(--mono);font-size:11px;color:var(--teal);
+  margin-left:auto;letter-spacing:0.1em;
+}
+#statusBadge{
+  font-family:var(--mono);font-size:10px;letter-spacing:0.12em;
+  padding:4px 12px;border-radius:2px;
+  background:rgba(0,196,212,0.08);
+  border:1px solid rgba(0,196,212,0.25);
+  color:var(--teal);
+  text-transform:uppercase;
+  transition:all 0.4s;
+}
+#statusBadge.scanning{
+  background:rgba(0,255,157,0.08);
+  border-color:rgba(0,255,157,0.4);
+  color:var(--phos);
+  animation:statusPulse 1.8s ease infinite;
+}
+#statusBadge.alert{
+  background:rgba(255,56,96,0.1);
+  border-color:rgba(255,56,96,0.5);
+  color:var(--plasma);
+}
+@keyframes statusPulse{0%,100%{opacity:1}50%{opacity:0.5}}
+
+/* ══ SCANNER PANEL (left) ══ */
+#scanPanel{
+  background:var(--deep);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  position:relative;overflow:hidden;
+}
+
+/* Camera viewport */
+#viewport{
+  position:relative;
+  flex:1;overflow:hidden;
+  background:#000;
+}
+#videoEl{
+  width:100%;height:100%;
+  object-fit:cover;transform:scaleX(-1);
+  display:block;opacity:0.9;
+}
+
+/* Scan beam */
+#scanBeam{
+  position:absolute;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,transparent,var(--teal),var(--phos),var(--teal),transparent);
+  box-shadow:0 0 16px 2px var(--teal),0 0 40px 4px rgba(0,196,212,0.3);
+  pointer-events:none;z-index:8;
+  top:0;
+  transition:none;
+}
+#scanBeam.active{animation:beamSweep 2.4s linear infinite}
+@keyframes beamSweep{
+  0%{top:0;opacity:1}
+  90%{top:calc(100% - 3px);opacity:1}
+  100%{top:calc(100% - 3px);opacity:0}
+}
+
+/* Grid overlay on camera */
+#gridOverlay{
+  position:absolute;inset:0;pointer-events:none;z-index:5;
+  background-image:
+    linear-gradient(rgba(0,196,212,0.06) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,196,212,0.06) 1px,transparent 1px);
+  background-size:40px 40px;
+}
+/* Corner brackets */
+#gridOverlay::before,#gridOverlay::after{
+  content:'';position:absolute;
+  width:28px;height:28px;
+}
+#gridOverlay::before{
+  top:12px;left:12px;
+  border-top:2px solid var(--phos);
+  border-left:2px solid var(--phos);
+  box-shadow:inset 4px 4px 0 rgba(0,255,157,0.1);
+}
+#gridOverlay::after{
+  bottom:12px;right:12px;
+  border-bottom:2px solid var(--phos);
+  border-right:2px solid var(--phos);
+}
+
+/* Extra corners via canvas wrapper */
+#cornerTR{position:absolute;top:12px;right:12px;width:28px;height:28px;
+  border-top:2px solid var(--phos);border-right:2px solid var(--phos);z-index:6;pointer-events:none;}
+#cornerBL{position:absolute;bottom:12px;left:12px;width:28px;height:28px;
+  border-bottom:2px solid var(--phos);border-left:2px solid var(--phos);z-index:6;pointer-events:none;}
+
+/* Face detection canvas */
+#faceCanvas{
+  position:absolute;inset:0;width:100%;height:100%;
+  pointer-events:none;z-index:7;
+  transform:scaleX(-1);
+}
+
+/* Face landmarks canvas */
+#landmarkCanvas{
+  position:absolute;inset:0;width:100%;height:100%;
+  pointer-events:none;z-index:8;
+  transform:scaleX(-1);
+}
+
+/* Biometric readouts on video */
+#bioReadouts{
+  position:absolute;bottom:0;left:0;right:0;z-index:9;
+  padding:10px 14px;
+  background:linear-gradient(transparent,rgba(2,11,18,0.92));
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;
+}
+.bio-cell{display:flex;flex-direction:column;gap:1px}
+.bio-val{
+  font-family:var(--mono);font-size:13px;
+  color:var(--phos);letter-spacing:0.04em;
+}
+.bio-key{
+  font-family:var(--mono);font-size:8px;
+  color:var(--dim);letter-spacing:0.12em;text-transform:uppercase;
+}
+
+/* DNA panel */
+#dnaPanel{
+  height:160px;border-top:1px solid var(--border);
+  position:relative;background:var(--void);
+  display:flex;align-items:center;
+}
+#dnaCanvas{display:block;width:100%;height:100%}
+#dnaLabel{
+  position:absolute;top:10px;left:14px;
+  font-family:var(--mono);font-size:9px;
+  color:var(--dim);letter-spacing:0.14em;text-transform:uppercase;
+}
+#dnaComplexity{
+  position:absolute;top:10px;right:14px;
+  font-family:var(--mono);font-size:9px;
+  color:var(--teal);letter-spacing:0.1em;
+}
+
+/* ══ RESULTS PANEL (right) ══ */
+#resultsPanel{
+  background:var(--panel);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+
+/* Report header */
+#reportHeader{
+  padding:16px 20px 12px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+#reportTitle{
+  font-family:var(--display);font-size:22px;font-weight:700;
+  color:var(--data);letter-spacing:0.06em;
+}
+#reportId{
+  font-family:var(--mono);font-size:10px;color:var(--dim);
+  letter-spacing:0.1em;margin-top:2px;
+}
+#scanProgress{
+  margin-top:10px;
+  height:2px;background:var(--dimmer);border-radius:1px;overflow:hidden;
+}
+#scanFill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg,var(--teal),var(--phos));
+  border-radius:1px;transition:width 0.6s ease;
+}
+
+/* Scrollable results */
+#resultsScroll{
+  flex:1;overflow-y:auto;padding:0 0 16px;
+}
+#resultsScroll::-webkit-scrollbar{width:3px}
+#resultsScroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── Section blocks ── */
+.r-section{
+  border-bottom:1px solid var(--border);
+  padding:14px 20px;
+}
+.r-section:last-child{border-bottom:none}
+
+.r-label{
+  font-family:var(--mono);font-size:9px;
+  color:var(--dim);letter-spacing:0.18em;text-transform:uppercase;
+  margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;
+}
+.r-label::after{
+  content:'';flex:1;height:1px;
+  background:linear-gradient(90deg,var(--border),transparent);
+}
+
+/* Age block */
+#ageBlock{
+  display:grid;grid-template-columns:auto 1fr;
+  gap:10px 18px;align-items:center;
+}
+#ageBig{
+  font-family:var(--display);font-size:68px;font-weight:700;
+  line-height:1;
+  color:var(--phos);
+  text-shadow:0 0 30px rgba(0,255,157,0.35);
+  grid-row:1/3;
+}
+#ageUnit{
+  font-family:var(--mono);font-size:11px;color:var(--dim);
+  letter-spacing:0.14em;align-self:end;
+}
+#ageConf{
+  font-family:var(--mono);font-size:11px;color:var(--teal);
+  align-self:start;letter-spacing:0.06em;
+}
+#ageBio{
+  grid-column:1/-1;
+  font-family:var(--body);font-size:12px;color:rgba(232,244,248,0.6);
+  font-weight:300;line-height:1.5;margin-top:4px;
+}
+
+/* Gender / expression row */
+.predict-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:10px;
+}
+.predict-cell{
+  background:rgba(10,42,58,0.5);
+  border:1px solid var(--border);border-radius:4px;
+  padding:10px 12px;
+}
+.predict-main{
+  font-family:var(--display);font-size:20px;font-weight:600;
+  color:var(--data);letter-spacing:0.04em;
+  margin-bottom:3px;
+}
+.predict-sub{
+  font-family:var(--mono);font-size:9px;
+  color:var(--dim);letter-spacing:0.12em;text-transform:uppercase;
+}
+.predict-bar{
+  margin-top:7px;height:2px;
+  background:var(--dimmer);border-radius:1px;overflow:hidden;
+}
+.predict-fill{
+  height:100%;border-radius:1px;
+  transition:width 0.5s ease;
+}
+
+/* Health indicators */
+.health-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;
+}
+.health-item{
+  display:flex;flex-direction:column;gap:4px;
+}
+.health-name{
+  font-family:var(--mono);font-size:9px;
+  color:var(--dim);letter-spacing:0.1em;text-transform:uppercase;
+}
+.health-score{
+  display:flex;align-items:center;gap:8px;
+}
+.health-val{
+  font-family:var(--display);font-size:18px;font-weight:600;
+  letter-spacing:0.04em;min-width:38px;
+  transition:color 0.4s;
+}
+.health-dots{
+  display:flex;gap:3px;
+}
+.h-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--dimmer);
+  transition:background 0.3s;
+}
+.h-dot.on-phos{background:var(--phos)}
+.h-dot.on-teal{background:var(--teal)}
+.h-dot.on-amber{background:var(--amber)}
+.h-dot.on-plasma{background:var(--plasma)}
+
+/* Emotion timeline */
+#emoTimeline{
+  display:flex;flex-direction:column;gap:6px;
+}
+.emo-row{
+  display:flex;align-items:center;gap:10px;
+}
+.emo-name{
+  font-family:var(--mono);font-size:10px;
+  color:var(--dim);letter-spacing:0.08em;
+  width:72px;flex-shrink:0;text-transform:uppercase;
+}
+.emo-track{
+  flex:1;height:8px;background:var(--dimmer);
+  border-radius:1px;overflow:hidden;position:relative;
+}
+.emo-fill{
+  position:absolute;top:0;left:0;height:100%;
+  border-radius:1px;
+  transition:width 0.4s ease;
+}
+.emo-pct{
+  font-family:var(--mono);font-size:10px;
+  color:var(--data);width:34px;text-align:right;
+  transition:color 0.3s;
+}
+
+/* Fun predictions */
+.fun-grid{
+  display:grid;grid-template-columns:1fr;gap:7px;
+}
+.fun-item{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:8px 10px;
+  background:rgba(4,21,32,0.7);
+  border:1px solid var(--border);border-radius:3px;
+  border-left:3px solid var(--teal);
+}
+.fun-icon{font-size:16px;flex-shrink:0;margin-top:1px}
+.fun-text{
+  font-family:var(--body);font-size:12px;
+  color:rgba(232,244,248,0.75);
+  line-height:1.4;font-weight:300;
+}
+.fun-text strong{color:var(--data);font-weight:500}
+
+/* Disclaimer */
+#disclaimer{
+  padding:12px 20px;
+  font-family:var(--mono);font-size:9px;
+  color:var(--dimmer);letter-spacing:0.08em;
+  border-top:1px solid var(--border);
+  flex-shrink:0;
+  line-height:1.6;
+}
+
+/* Loading */
+#loadScreen{
+  position:fixed;inset:0;z-index:999;
+  background:var(--void);
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:18px;
+}
+#loadScreen.gone{display:none}
+#loadIcon{font-size:42px;animation:spin 3s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loadTitle{
+  font-family:var(--display);font-size:26px;font-weight:700;
+  color:var(--phos);letter-spacing:0.1em;
+  text-shadow:0 0 30px rgba(0,255,157,0.4);
+}
+#loadMsg{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:0.1em}
+#loadBar{width:260px;height:1px;background:var(--border);overflow:hidden}
+#loadFill{height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--phos));transition:width 0.4s}
+
+/* Scan button */
+#scanBtn{
+  margin:0 20px 0;padding:10px 0;
+  background:linear-gradient(135deg,rgba(0,196,212,0.15),rgba(0,255,157,0.08));
+  border:1px solid rgba(0,255,157,0.3);
+  border-radius:3px;cursor:pointer;
+  font-family:var(--display);font-size:15px;font-weight:600;
+  color:var(--phos);letter-spacing:0.12em;text-transform:uppercase;
+  transition:all 0.2s;flex-shrink:0;
+}
+#scanBtn:hover{
+  background:linear-gradient(135deg,rgba(0,196,212,0.25),rgba(0,255,157,0.15));
+  box-shadow:0 0 20px rgba(0,255,157,0.15);
+}
+#scanBtn:disabled{opacity:0.4;cursor:not-allowed}
+
+@media(max-width:800px){
+  #app{grid-template-columns:1fr;grid-template-rows:44px 40vh 1fr}
+  #scanPanel{grid-row:2}
+  #resultsPanel{grid-row:3}
+  html,body{overflow-y:auto}
+  #app{height:auto}
+  #dnaPanel{height:120px}
+}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loadScreen">
+  <div id="loadIcon">🧬</div>
+  <div id="loadTitle">DNA FACE SCANNER</div>
+  <div id="loadMsg">initializing biometric sensors…</div>
+  <div id="loadBar"><div id="loadFill"></div></div>
+</div>
+
+<div id="app">
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <div class="sys-id">🧬 GENOMIC FACE ANALYSIS v4.2</div>
+    <div class="sys-sub">Biometric · Non-diagnostic · Experimental</div>
+    <div class="sys-time" id="sysTime">—</div>
+    <div id="statusBadge">INITIALIZING</div>
+  </div>
+
+  <!-- Left: Scanner -->
+  <div id="scanPanel">
+    <div id="viewport">
+      <video id="videoEl" autoplay muted playsinline></video>
+      <div id="scanBeam"></div>
+      <div id="gridOverlay"></div>
+      <div id="cornerTR"></div>
+      <div id="cornerBL"></div>
+      <canvas id="faceCanvas"></canvas>
+      <canvas id="landmarkCanvas"></canvas>
+      <div id="bioReadouts">
+        <div class="bio-cell">
+          <div class="bio-val" id="bioFPS">—</div>
+          <div class="bio-key">Scan rate</div>
+        </div>
+        <div class="bio-cell">
+          <div class="bio-val" id="bioConf">—</div>
+          <div class="bio-key">Confidence</div>
+        </div>
+        <div class="bio-cell">
+          <div class="bio-val" id="bioFaces">—</div>
+          <div class="bio-key">Subjects</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DNA Helix -->
+    <div id="dnaPanel">
+      <canvas id="dnaCanvas"></canvas>
+      <div id="dnaLabel">live dna helix model</div>
+      <div id="dnaComplexity" id="dnaComplexity">SEQUENCE: ANALYZING…</div>
+    </div>
+  </div>
+
+  <!-- Right: Results -->
+  <div id="resultsPanel">
+    <div id="reportHeader">
+      <div id="reportTitle">BIOMETRIC ANALYSIS REPORT</div>
+      <div id="reportId" id="reportId">SUBJECT ID: ████████ · AWAITING SCAN</div>
+      <div id="scanProgress"><div id="scanFill"></div></div>
+    </div>
+
+    <div id="resultsScroll">
+
+      <!-- Age -->
+      <div class="r-section">
+        <div class="r-label">Estimated biological age</div>
+        <div id="ageBlock">
+          <div id="ageBig">——</div>
+          <div id="ageUnit">YRS</div>
+          <div id="ageConf">Awaiting scan…</div>
+          <div id="ageBio">Point your face at the camera to begin biometric analysis.</div>
+        </div>
+      </div>
+
+      <!-- Gender / Dominant Emotion -->
+      <div class="r-section">
+        <div class="r-label">Primary biometric markers</div>
+        <div class="predict-grid">
+          <div class="predict-cell">
+            <div class="predict-main" id="genderVal">——</div>
+            <div class="predict-sub">Gender presentation</div>
+            <div class="predict-bar"><div class="predict-fill" id="genderBar" style="background:var(--teal);width:0%"></div></div>
+          </div>
+          <div class="predict-cell">
+            <div class="predict-main" id="emotionVal">——</div>
+            <div class="predict-sub">Dominant state</div>
+            <div class="predict-bar"><div class="predict-fill" id="emotionBar" style="background:var(--phos);width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Health indicators -->
+      <div class="r-section">
+        <div class="r-label">Algorithmic wellness index</div>
+        <div class="health-grid" id="healthGrid">
+          <!-- filled by JS -->
+        </div>
+      </div>
+
+      <!-- Emotion timeline -->
+      <div class="r-section">
+        <div class="r-label">Emotion spectrum</div>
+        <div id="emoTimeline">
+          <!-- filled by JS -->
+        </div>
+      </div>
+
+      <!-- Fun predictions -->
+      <div class="r-section">
+        <div class="r-label">Phenotypic prediction matrix</div>
+        <div class="fun-grid" id="funGrid">
+          <div class="fun-item">
+            <div class="fun-icon">🔬</div>
+            <div class="fun-text">Awaiting facial geometry data…</div>
+          </div>
+        </div>
+      </div>
+
+      <button id="scanBtn" disabled onclick="triggerDeepScan()">⚡ INITIATE DEEP GENOMIC SCAN</button>
+
+    </div>
+
+    <div id="disclaimer">
+      ⚠ FOR ENTERTAINMENT PURPOSES ONLY · NOT MEDICAL ADVICE · PREDICTIONS ARE ALGORITHMIC ESTIMATES BASED ON FACIAL GEOMETRY · NO DATA IS STORED OR TRANSMITTED · ALL ANALYSIS OCCURS LOCALLY IN YOUR BROWSER
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  🧬 DNA FACE SCANNER ENGINE
+//  face-api.js → age/gender/expressions → health predictions
+//  + reactive DNA helix canvas
+// ════════════════════════════════════════════════════════════
+
+const FACEAPI_SRC = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
+const WEIGHTS_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+
+// ── DOM ──
+const video       = document.getElementById('videoEl');
+const faceCanvas  = document.getElementById('faceCanvas');
+const fctx        = faceCanvas.getContext('2d');
+const lmCanvas    = document.getElementById('landmarkCanvas');
+const lctx        = lmCanvas.getContext('2d');
+const dnaCanvas   = document.getElementById('dnaCanvas');
+const dctx        = dnaCanvas.getContext('2d');
+
+// ── STATE ──
+let animT       = 0;
+let faceReady   = false;
+let lastDet     = null;
+let scanCount   = 0;
+let sessionId   = generateId();
+let deepScanActive = false;
+let fpsArr      = [];
+let lastFrame   = Date.now();
+
+// Smoothed face data
+let smoothAge   = 0;
+let smoothExprs = {};
+let smoothGender= {male:0.5,female:0.5};
+
+// DNA state — driven by face data
+let dnaAge      = 30;    // tightens coils
+let dnaEnergy   = 0.5;   // glow intensity
+let dnaMutation = 0;     // plasma red flash events
+
+// Emotion history ring buffer
+const EMO_HISTORY_LEN = 80;
+const emoHistory = {
+  happy:    new Float32Array(EMO_HISTORY_LEN),
+  sad:      new Float32Array(EMO_HISTORY_LEN),
+  angry:    new Float32Array(EMO_HISTORY_LEN),
+  surprised:new Float32Array(EMO_HISTORY_LEN),
+  fearful:  new Float32Array(EMO_HISTORY_LEN),
+  disgusted:new Float32Array(EMO_HISTORY_LEN),
+  neutral:  new Float32Array(EMO_HISTORY_LEN),
+};
+let emoPtr = 0;
+
+// ── UTILS ──
+function lerp(a,b,t){return a+(b-a)*t}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v))}
+function rand(a,b){return a+Math.random()*(b-a)}
+function generateId(){return Math.random().toString(36).substr(2,8).toUpperCase()}
+function fmtPct(v){return Math.round(v*100)+'%'}
+
+// ── CLOCK ──
+setInterval(()=>{
+  const d=new Date();
+  document.getElementById('sysTime').textContent=
+    d.toLocaleTimeString('en',{hour12:false})+' UTC';
+},1000);
+
+// ── RESIZE CANVASES ──
+function syncCanvases(){
+  const vp=document.getElementById('viewport');
+  const w=vp.offsetWidth,h=vp.offsetHeight;
+  faceCanvas.width=lmCanvas.width=w;
+  faceCanvas.height=lmCanvas.height=h;
+  const dp=document.getElementById('dnaPanel');
+  dnaCanvas.width=dp.offsetWidth;
+  dnaCanvas.height=dp.offsetHeight;
+}
+window.addEventListener('resize',syncCanvases);
+
+// ════════════════════════════════════════════════
+//  DNA HELIX RENDERER — reactive to face data
+// ════════════════════════════════════════════════
+function drawDNA(){
+  const W=dnaCanvas.width,H=dnaCanvas.height;
+  dctx.clearRect(0,0,W,H);
+
+  const cx=W/2;
+  const amplitude = 28+Math.sin(animT*0.5)*4;
+  const frequency = lerp(0.06,0.14,clamp((dnaAge-15)/65,0,1)); // older = tighter
+  const speed     = lerp(0.8,2.0,dnaEnergy);
+  const nodeGap   = 18;
+  const strand1=[],strand2=[];
+
+  // Build helix strands
+  const len=Math.floor(W/nodeGap)+4;
+  for(let i=0;i<len;i++){
+    const x=i*nodeGap - (animT*speed*20)%nodeGap;
+    const phase=i*nodeGap*frequency+animT*speed;
+    const y1=H/2+Math.sin(phase)*amplitude;
+    const y2=H/2+Math.sin(phase+Math.PI)*amplitude;
+    strand1.push({x,y:y1});
+    strand2.push({x,y:y2});
+  }
+
+  // Colour theme from face state
+  const happiness=smoothExprs.happy||0;
+  const anger=smoothExprs.angry||0;
+  const h1=lerp(165,200,anger*0.5+dnaEnergy*0.3); // green→teal→blue
+  const h2=lerp(175,210,anger*0.5);
+  const glowA=lerp(0.35,0.9,dnaEnergy);
+
+  // Draw base pairs (rungs)
+  for(let i=0;i<strand1.length-1;i++){
+    const t=(strand1[i].y-H/2+amplitude)/(amplitude*2);
+    if(Math.abs(Math.sin(i*nodeGap*frequency+animT*speed))<0.25){
+      const grd=dctx.createLinearGradient(strand1[i].x,strand1[i].y,strand2[i].x,strand2[i].y);
+      const mut=dnaMutation*0.6;
+      grd.addColorStop(0,`hsla(${h1},100%,${55+happiness*20}%,${glowA})`);
+      grd.addColorStop(0.5,`hsla(${lerp(h1,0,mut)},100%,75%,${glowA*0.5})`);
+      grd.addColorStop(1,`hsla(${h2},90%,60%,${glowA})`);
+      dctx.beginPath();
+      dctx.moveTo(strand1[i].x,strand1[i].y);
+      dctx.lineTo(strand2[i].x,strand2[i].y);
+      dctx.strokeStyle=grd;
+      dctx.lineWidth=1.5;
+      dctx.stroke();
+    }
+  }
+
+  // Strand 1 — phosphor
+  dctx.beginPath();
+  strand1.forEach((p,i)=>i===0?dctx.moveTo(p.x,p.y):dctx.lineTo(p.x,p.y));
+  const sg1=dctx.createLinearGradient(0,0,W,0);
+  sg1.addColorStop(0,'transparent');
+  sg1.addColorStop(0.1,`hsla(${h1},100%,65%,${glowA})`);
+  sg1.addColorStop(0.9,`hsla(${h1},100%,65%,${glowA})`);
+  sg1.addColorStop(1,'transparent');
+  dctx.strokeStyle=sg1;
+  dctx.lineWidth=2.5;
+  dctx.stroke();
+  // Glow
+  dctx.strokeStyle=`hsla(${h1},100%,70%,${glowA*0.3})`;
+  dctx.lineWidth=6;dctx.stroke();
+
+  // Strand 2 — teal
+  dctx.beginPath();
+  strand2.forEach((p,i)=>i===0?dctx.moveTo(p.x,p.y):dctx.lineTo(p.x,p.y));
+  const sg2=dctx.createLinearGradient(0,0,W,0);
+  sg2.addColorStop(0,'transparent');
+  sg2.addColorStop(0.1,`hsla(${h2},85%,60%,${glowA})`);
+  sg2.addColorStop(0.9,`hsla(${h2},85%,60%,${glowA})`);
+  sg2.addColorStop(1,'transparent');
+  dctx.strokeStyle=sg2;
+  dctx.lineWidth=2.5;dctx.stroke();
+  dctx.strokeStyle=`hsla(${h2},90%,65%,${glowA*0.3})`;
+  dctx.lineWidth=6;dctx.stroke();
+
+  // Nodes on strand 1
+  strand1.forEach((p,i)=>{
+    if(i%3!==0||p.x<0||p.x>W)return;
+    const isMutant=dnaM&&Math.random()<dnaM*0.15;
+    dctx.beginPath();dctx.arc(p.x,p.y,3,0,Math.PI*2);
+    dctx.fillStyle=isMutant?'#ff3860':`hsl(${h1},100%,80%)`;
+    dctx.fill();
+    if(glowA>0.5){
+      dctx.beginPath();dctx.arc(p.x,p.y,7,0,Math.PI*2);
+      dctx.fillStyle=`hsla(${h1},100%,70%,0.15)`;dctx.fill();
+    }
+  });
+
+  if(dnaM>0)dnaM=Math.max(0,dnaM-0.02);
+
+  // Sequence label
+  document.getElementById('dnaComplexity').textContent=
+    `SEQ FREQ: ${frequency.toFixed(3)} · E: ${dnaEnergy.toFixed(2)} · AGE-FACTOR: ${Math.round(dnaAge)}`;
+}
+let dnaM=0; // mutation flash
+
+// ════════════════════════════════════════════════
+//  FACE CANVAS OVERLAY
+// ════════════════════════════════════════════════
+function drawFaceOverlay(det){
+  fctx.clearRect(0,0,faceCanvas.width,faceCanvas.height);
+  lctx.clearRect(0,0,lmCanvas.width,lmCanvas.height);
+  if(!det)return;
+
+  const W=faceCanvas.width,H=faceCanvas.height;
+  const box=det.detection.box;
+  const scaleX=W/(video.videoWidth||640);
+  const scaleY=H/(video.videoHeight||480);
+
+  // Mirror the box
+  const mirX=(video.videoWidth-box.x-box.width)*scaleX;
+  const bx=mirX,by=box.y*scaleY,bw=box.width*scaleX,bh=box.height*scaleY;
+
+  // Detection box — dashed teal
+  fctx.save();
+  fctx.strokeStyle='rgba(0,196,212,0.8)';
+  fctx.lineWidth=1.5;
+  fctx.setLineDash([6,4]);
+  fctx.strokeRect(bx,by,bw,bh);
+  fctx.setLineDash([]);
+
+  // Corner accents
+  const aw=20;
+  [[bx,by],[bx+bw-aw,by],[bx,by+bh-aw],[bx+bw-aw,by+bh-aw]].forEach(([cx,cy],i)=>{
+    fctx.strokeStyle='#00ff9d';fctx.lineWidth=2.5;fctx.setLineDash([]);
+    fctx.beginPath();
+    if(i===0){fctx.moveTo(cx+aw,cy);fctx.lineTo(cx,cy);fctx.lineTo(cx,cy+aw);}
+    if(i===1){fctx.moveTo(cx,cy);fctx.lineTo(cx+aw,cy);fctx.lineTo(cx+aw,cy+aw);}
+    if(i===2){fctx.moveTo(cx,cy);fctx.lineTo(cx,cy+aw);fctx.lineTo(cx+aw,cy+aw);}
+    if(i===3){fctx.moveTo(cx,cy+aw);fctx.lineTo(cx+aw,cy+aw);fctx.lineTo(cx+aw,cy);}
+    fctx.stroke();
+  });
+
+  // Biometric scan lines across face
+  for(let sl=0;sl<5;sl++){
+    const sy=by+bh*0.2+sl*(bh*0.15);
+    fctx.beginPath();fctx.moveTo(bx,sy);fctx.lineTo(bx+bw,sy);
+    fctx.strokeStyle=`rgba(0,255,157,${0.04+Math.sin(animT*3+sl)*0.03})`;
+    fctx.lineWidth=1;fctx.stroke();
+  }
+
+  // ID tag above box
+  const tagText=`ID:${sessionId.substr(0,6)} · CONF:${Math.round((det.detection.score||0.9)*100)}%`;
+  fctx.font='9px "Share Tech Mono"';
+  const tw=fctx.measureText(tagText).width;
+  fctx.fillStyle='rgba(4,21,32,0.85)';
+  fctx.fillRect(bx-1,by-18,tw+10,15);
+  fctx.fillStyle='#00ff9d';
+  fctx.fillText(tagText,bx+4,by-7);
+
+  // Landmarks if available
+  if(det.landmarks){
+    const pts=det.landmarks.positions;
+    lctx.fillStyle='rgba(0,255,157,0.5)';
+    pts.forEach(p=>{
+      const lx=(video.videoWidth-p.x)*scaleX;
+      const ly=p.y*scaleY;
+      lctx.beginPath();lctx.arc(lx,ly,1.2,0,Math.PI*2);lctx.fill();
+    });
+    // Connect eye landmarks
+    [[36,41],[42,47]].forEach(([s,e])=>{
+      lctx.beginPath();
+      for(let li=s;li<=e;li++){
+        const p=pts[li];
+        const lx=(video.videoWidth-p.x)*scaleX,ly=p.y*scaleY;
+        li===s?lctx.moveTo(lx,ly):lctx.lineTo(lx,ly);
+      }
+      lctx.closePath();
+      lctx.strokeStyle='rgba(0,196,212,0.4)';lctx.lineWidth=1;lctx.stroke();
+    });
+  }
+
+  fctx.restore();
+}
+
+// ════════════════════════════════════════════════
+//  HEALTH PREDICTIONS (algorithmic / fun)
+// ════════════════════════════════════════════════
+const HEALTH_LABELS=[
+  {key:'vitality',   name:'Vitality Index',  algo:d=>clamp(1.1-d.age/110+d.exprs.happy*0.4,0,1)},
+  {key:'stress',     name:'Stress Marker',   algo:d=>clamp(d.exprs.angry*0.8+d.exprs.fearful*0.9+d.exprs.disgusted*0.5,0,1)},
+  {key:'happiness',  name:'Serotonin Est.',  algo:d=>clamp(d.exprs.happy*1.3+d.exprs.surprised*0.3,0,1)},
+  {key:'focus',      name:'Cognitive Load',  algo:d=>clamp(1-d.exprs.neutral*0.7+(d.exprs.surprised+d.exprs.disgusted)*0.4,0,1)},
+  {key:'fatigue',    name:'Fatigue Signal',  algo:d=>clamp(d.exprs.sad*0.9+(d.age/100)*0.5,0,1)},
+  {key:'resilience', name:'Resilience Idx',  algo:d=>clamp(0.4+d.exprs.happy*0.5-d.exprs.fearful*0.4,0,1)},
+];
+
+function scoreColor(v){
+  if(v>=0.75)return'var(--phos)';
+  if(v>=0.5) return'var(--teal)';
+  if(v>=0.3) return'var(--amber)';
+  return 'var(--plasma)';
+}
+function dotClass(v){
+  if(v>=0.75)return'on-phos';
+  if(v>=0.5) return'on-teal';
+  if(v>=0.3) return'on-amber';
+  return 'on-plasma';
+}
+
+function buildHealthGrid(){
+  const grid=document.getElementById('healthGrid');
+  grid.innerHTML=HEALTH_LABELS.map(h=>`
+    <div class="health-item">
+      <div class="health-name">${h.name}</div>
+      <div class="health-score">
+        <div class="health-val" id="hv-${h.key}" style="color:var(--dim)">——</div>
+        <div class="health-dots" id="hd-${h.key}">
+          ${[1,2,3,4,5].map(i=>`<div class="h-dot" id="dot-${h.key}-${i}"></div>`).join('')}
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function updateHealthGrid(data){
+  HEALTH_LABELS.forEach(h=>{
+    const v=h.algo(data);
+    const el=document.getElementById('hv-'+h.key);
+    if(el){
+      el.textContent=Math.round(v*100);
+      el.style.color=scoreColor(v);
+    }
+    const dots=5;
+    const filled=Math.round(v*dots);
+    const dc=dotClass(v);
+    for(let i=1;i<=dots;i++){
+      const d=document.getElementById(`dot-${h.key}-${i}`);
+      if(d){d.className='h-dot '+(i<=filled?dc:'');}
+    }
+  });
+}
+
+// ════════════════════════════════════════════════
+//  EMOTION TIMELINE ROWS
+// ════════════════════════════════════════════════
+const EMO_CFG=[
+  {key:'happy',     label:'Happy',     color:'#00ff9d'},
+  {key:'neutral',   label:'Neutral',   color:'#00c4d4'},
+  {key:'sad',       label:'Sad',       color:'#4a90e2'},
+  {key:'angry',     label:'Angry',     color:'#ff3860'},
+  {key:'fearful',   label:'Fearful',   color:'#9b59b6'},
+  {key:'disgusted', label:'Disgust',   color:'#e67e22'},
+  {key:'surprised', label:'Surprise',  color:'#ffb800'},
+];
+
+function buildEmoTimeline(){
+  const el=document.getElementById('emoTimeline');
+  el.innerHTML=EMO_CFG.map(e=>`
+    <div class="emo-row">
+      <div class="emo-name">${e.label}</div>
+      <div class="emo-track">
+        <div class="emo-fill" id="ef-${e.key}" style="background:${e.color};width:0%"></div>
+      </div>
+      <div class="emo-pct" id="ep-${e.key}" style="color:${e.color}">0%</div>
+    </div>`).join('');
+}
+
+function updateEmoTimeline(exprs){
+  EMO_CFG.forEach(e=>{
+    const v=exprs[e.key]||0;
+    const ef=document.getElementById('ef-'+e.key);
+    const ep=document.getElementById('ep-'+e.key);
+    if(ef)ef.style.width=Math.round(v*100)+'%';
+    if(ep)ep.textContent=Math.round(v*100)+'%';
+  });
+}
+
+// ════════════════════════════════════════════════
+//  FUN PREDICTIONS
+// ════════════════════════════════════════════════
+const FUN_POOL = [
+  {icon:'☕',fn:d=>`You consume approximately <strong>${Math.round(1.5+d.exprs.sad*3+d.exprs.angry*2)} cups</strong> of caffeine per day based on periorbital tension patterns.`},
+  {icon:'🌙',fn:d=>`Sleep efficiency estimated at <strong>${Math.round(55+d.exprs.happy*35-d.exprs.angry*20)}%</strong>. ${d.exprs.happy>0.4?'Looking well-rested!':'More rest recommended.'}`},
+  {icon:'🧠',fn:d=>`Neural plasticity index: <strong>${Math.round(40+d.exprs.surprised*50)}%</strong>. ${d.exprs.surprised>0.3?'High curiosity signature detected.':'Stable cognitive baseline.'}`},
+  {icon:'🏃',fn:d=>`Activity level predicted: <strong>${['sedentary','lightly active','active','very active'][Math.min(3,Math.floor((d.exprs.happy+1-d.exprs.sad)*1.5))]}</strong> based on facial muscle tonicity.`},
+  {icon:'🎵',fn:d=>`Preferred music tempo: <strong>${Math.round(80+d.exprs.surprised*60+d.exprs.angry*40)} BPM</strong>. ${d.exprs.happy>0.3?'Upbeat signature.':d.exprs.sad>0.2?'Mellower tendencies.':'Moderate range.'}`},
+  {icon:'🌡️',fn:d=>`Baseline body temperature variance: <strong>${(36.5+d.exprs.angry*0.4-d.exprs.sad*0.2).toFixed(1)}°C</strong> estimated from facial vasodilation patterns.`},
+  {icon:'💧',fn:d=>`Hydration index: <strong>${Math.round(60+d.exprs.happy*30-d.exprs.angry*15)}%</strong>. ${d.exprs.neutral>0.5?'Equilibrium detected.':'Drink more water!'}`},
+  {icon:'🧬',fn:d=>`Mitochondrial efficiency: <strong>${Math.round(65+d.exprs.surprised*25)}%</strong>. Phenotype resonance with <strong>${['Northern European','East Asian','Mediterranean','South Asian'][Math.floor(d.age/25)%4]}</strong> ancestry cluster.`},
+  {icon:'🔋',fn:d=>`Current energy reserve: <strong>${Math.round(30+d.exprs.happy*60-d.exprs.sad*30)}%</strong> of peak capacity.`},
+  {icon:'🫀',fn:d=>`Estimated resting heart rate: <strong>${Math.round(62+d.exprs.angry*20+d.exprs.fearful*18-d.exprs.neutral*8)} BPM</strong> from facial pulse micro-oscillation.`},
+  {icon:'🧪',fn:d=>`Cortisol expression signature: <strong>${d.exprs.angry+d.exprs.fearful>0.4?'elevated':'nominal'}</strong>. ${d.exprs.happy>0.3?'Endorphin markers present.':''}`},
+  {icon:'👁️',fn:d=>`Saccade pattern suggests <strong>${d.exprs.surprised>0.3?'high':'moderate'} visual curiosity</strong>. Attention span estimate: <strong>${Math.round(8+d.exprs.neutral*14)} minutes</strong>.`},
+];
+
+function pickFunPredictions(data,n=4){
+  const shuffled=[...FUN_POOL].sort(()=>Math.random()-0.5);
+  return shuffled.slice(0,n).map(f=>({icon:f.icon,text:f.fn(data)}));
+}
+
+function renderFunPredictions(data){
+  const preds=pickFunPredictions(data,4);
+  document.getElementById('funGrid').innerHTML=preds.map(p=>`
+    <div class="fun-item">
+      <div class="fun-icon">${p.icon}</div>
+      <div class="fun-text">${p.text}</div>
+    </div>`).join('');
+}
+
+// ════════════════════════════════════════════════
+//  AGE BIO TEXT
+// ════════════════════════════════════════════════
+function ageBioText(age,exprs){
+  if(age<20)return`Juvenile facial geometry detected. ${exprs.surprised>0.3?'High curiosity coefficient.':'Baseline adolescent markers present.'}`;
+  if(age<30)return`Young adult phenotype. ${exprs.happy>0.4?'Strong positive affect — excellent vitality marker.':'Neural development peak window.'}`;
+  if(age<40)return`Prime adult biometrics. ${exprs.neutral>0.5?'Steady-state emotional regulation detected.':'Dynamic emotional range active.'}`;
+  if(age<50)return`Mature adult expression matrix. ${exprs.angry>0.2?'Elevated assertiveness markers.':'Experience-tempered facial geometry.'}`;
+  if(age<60)return`Senior adult phenotype with experienced facial musculature. ${exprs.happy>0.3?'Positive affect coefficient strong.':'Wisdom signature detected.'}`;
+  return`Elder phenotype. Deep expression grooves indicate rich life history. ${exprs.neutral>0.4?'Zen equilibrium coefficient detected.':'Vibrant emotional engagement active.'}`;
+}
+
+// ════════════════════════════════════════════════
+//  UPDATE ALL UI
+// ════════════════════════════════════════════════
+function updateUI(det){
+  const age=det.age;
+  const exprs=det.expressions;
+  const gender=det.gender;
+  const genderPr=det.genderProbability;
+
+  // Smooth
+  smoothAge=lerp(smoothAge,age,0.12);
+  Object.keys(exprs).forEach(k=>{
+    smoothExprs[k]=lerp(smoothExprs[k]||0,exprs[k],0.15);
+  });
+  smoothGender.male=lerp(smoothGender.male,gender==='male'?genderPr:1-genderPr,0.1);
+  smoothGender.female=1-smoothGender.male;
+
+  // DNA reactive
+  dnaAge=lerp(dnaAge,smoothAge,0.05);
+  dnaEnergy=lerp(dnaEnergy,0.3+(smoothExprs.happy||0)*0.5+(smoothExprs.surprised||0)*0.3,0.08);
+
+  // Age
+  document.getElementById('ageBig').textContent=Math.round(smoothAge);
+  document.getElementById('ageConf').textContent=`± ${Math.round(3+Math.random()*2)} yr · ${scanCount} samples`;
+  document.getElementById('ageBio').textContent=ageBioText(smoothAge,smoothExprs);
+
+  // Gender
+  const gLabel=smoothGender.female>0.6?'Female':smoothGender.male>0.6?'Male':'Androgynous';
+  const gConf=Math.max(smoothGender.male,smoothGender.female);
+  document.getElementById('genderVal').textContent=gLabel;
+  document.getElementById('genderBar').style.width=Math.round(gConf*100)+'%';
+
+  // Dominant emotion
+  const topEmo=Object.entries(smoothExprs).sort((a,b)=>b[1]-a[1])[0];
+  const emoLabels={happy:'Happy 😊',sad:'Sad 😢',angry:'Angry 😠',
+    fearful:'Fearful 😨',disgusted:'Disgusted 🤢',surprised:'Surprised 😲',neutral:'Neutral 😐'};
+  document.getElementById('emotionVal').textContent=emoLabels[topEmo[0]]||topEmo[0];
+  document.getElementById('emotionBar').style.width=Math.round(topEmo[1]*100)+'%';
+
+  // Health
+  updateHealthGrid({age:smoothAge,exprs:smoothExprs});
+
+  // Emotions
+  updateEmoTimeline(smoothExprs);
+
+  // Emo history buffer
+  Object.keys(emoHistory).forEach(k=>{
+    emoHistory[k][emoPtr%EMO_HISTORY_LEN]=smoothExprs[k]||0;
+  });
+  emoPtr++;
+
+  // Scan progress
+  const prog=Math.min(scanCount/30*100,100);
+  document.getElementById('scanFill').style.width=prog+'%';
+
+  // Report ID
+  document.getElementById('reportId').textContent=
+    `SUBJECT ID: ${sessionId} · SCAN #${String(scanCount).padStart(4,'0')} · ${new Date().toLocaleTimeString('en',{hour12:false})}`;
+
+  // Bio readouts
+  document.getElementById('bioConf').textContent=Math.round((det.detection?.score||0.92)*100)+'%';
+  document.getElementById('bioFaces').textContent='01';
+
+  // Fun predictions — refresh every 15 scans
+  if(scanCount%15===1)renderFunPredictions({age:smoothAge,exprs:smoothExprs});
+
+  // DNA mutation on anger/fear spike
+  if((smoothExprs.angry||0)+(smoothExprs.fearful||0)>0.6)dnaM=Math.min(1,dnaM+0.3);
+
+  // Status
+  document.getElementById('statusBadge').textContent='SCANNING LIVE';
+  document.getElementById('statusBadge').className='scanning';
+  document.getElementById('scanBeam').classList.add('active');
+  document.getElementById('scanBtn').disabled=false;
+}
+
+function clearUI(){
+  document.getElementById('statusBadge').textContent='NO SUBJECT';
+  document.getElementById('statusBadge').className='';
+  document.getElementById('bioFaces').textContent='00';
+  document.getElementById('bioConf').textContent='—';
+  document.getElementById('scanBeam').classList.remove('active');
+  fctx.clearRect(0,0,faceCanvas.width,faceCanvas.height);
+  lctx.clearRect(0,0,lmCanvas.width,lmCanvas.height);
+}
+
+// ── DEEP SCAN ──
+function triggerDeepScan(){
+  deepScanActive=true;
+  sessionId=generateId();
+  scanCount=0;
+  document.getElementById('scanFill').style.width='0%';
+  document.getElementById('scanBtn').disabled=true;
+  dnaM=0.8;
+  document.getElementById('statusBadge').textContent='DEEP SCAN';
+  document.getElementById('statusBadge').className='alert';
+  setTimeout(()=>{deepScanActive=false;document.getElementById('scanBtn').disabled=false;},8000);
+}
+window.triggerDeepScan=triggerDeepScan;
+
+// ── FPS COUNTER ──
+function updateFPS(){
+  const now=Date.now();
+  fpsArr.push(1000/(now-lastFrame));
+  if(fpsArr.length>20)fpsArr.shift();
+  const fps=fpsArr.reduce((a,b)=>a+b,0)/fpsArr.length;
+  document.getElementById('bioFPS').textContent=Math.round(fps)+' fps';
+  lastFrame=now;
+}
+
+// ════════════════════════════════════════════════
+//  DETECTION LOOP
+// ════════════════════════════════════════════════
+async function detectLoop(){
+  if(!faceReady){requestAnimationFrame(detectLoop);return;}
+  syncCanvases();
+
+  try{
+    const det=await faceapi
+      .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:0.5}))
+      .withFaceLandmarks()
+      .withFaceExpressions()
+      .withAgeAndGender();
+
+    updateFPS();
+
+    if(det){
+      lastDet=det;
+      scanCount++;
+      drawFaceOverlay(det);
+      updateUI(det);
+    }else{
+      if(Date.now()-lastFrame>3000)clearUI();
+      fctx.clearRect(0,0,faceCanvas.width,faceCanvas.height);
+      lctx.clearRect(0,0,lmCanvas.width,lmCanvas.height);
+    }
+  }catch(e){}
+
+  setTimeout(detectLoop,120);
+}
+
+// ════════════════════════════════════════════════
+//  ANIMATION LOOP
+// ════════════════════════════════════════════════
+function animLoop(){
+  animT+=0.016;
+  drawDNA();
+  requestAnimationFrame(animLoop);
+}
+
+// ════════════════════════════════════════════════
+//  LOADING
+// ════════════════════════════════════════════════
+function progress(p,msg){
+  document.getElementById('loadFill').style.width=p+'%';
+  document.getElementById('loadMsg').textContent=msg;
+}
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=src;s.onload=res;s.onerror=rej;
+    document.head.appendChild(s);
+  });
+}
+
+async function init(){
+  progress(5,'Loading face-api.js…');
+  try{await loadScript(FACEAPI_SRC);}
+  catch(e){document.getElementById('loadMsg').textContent='Network error — check connection';return;}
+
+  progress(25,'Opening camera…');
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}}
+    });
+    video.srcObject=stream;
+    await new Promise(r=>video.onloadedmetadata=r);
+    video.play();
+  }catch(e){
+    document.getElementById('loadMsg').textContent='Camera access denied — please allow and reload';
+    return;
+  }
+
+  progress(40,'Loading TinyFaceDetector…');
+  await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS_URL);
+  progress(60,'Loading face landmark model…');
+  await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS_URL);
+  progress(75,'Loading expression model…');
+  await faceapi.nets.faceExpressionNet.loadFromUri(WEIGHTS_URL);
+  progress(90,'Loading age/gender model…');
+  await faceapi.nets.ageGenderNet.loadFromUri(WEIGHTS_URL);
+
+  faceReady=true;
+  progress(100,'All systems online');
+
+  // Build static UI sections
+  buildHealthGrid();
+  buildEmoTimeline();
+
+  // Init smoothed exprs
+  ['happy','sad','angry','fearful','disgusted','surprised','neutral'].forEach(k=>smoothExprs[k]=0);
+
+  syncCanvases();
+
+  setTimeout(()=>{
+    document.getElementById('loadScreen').classList.add('gone');
+    detectLoop();
+    animLoop();
+  },400);
+}
+
+init();
+</script>
+</body>
+</html>
